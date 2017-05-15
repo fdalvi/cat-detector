@@ -1,0 +1,9 @@
+# OSX stuff
+*.DS_Store
+
+# Compiled
+*.pyc
+
+# Datasets
+data/cifar10/cifar-10-batches-py/
+data/voc2012/VOC2012/
