@@ -25,7 +25,7 @@ def rect2lines(bbox):
 	return point_list
 
 # Malisiewicz et al.
-def non_max_suppression_fast(boxes, overlapThresh):
+def non_max_suppression_fast(boxes, probs, overlapThresh):
 	# if there are no boxes, return an empty list
 	if len(boxes) == 0:
 		return []
@@ -47,7 +47,7 @@ def non_max_suppression_fast(boxes, overlapThresh):
 	# compute the area of the bounding boxes and sort the bounding
 	# boxes by the bottom-right y-coordinate of the bounding box
 	area = (x2 - x1 + 1) * (y2 - y1 + 1)
-	idxs = np.argsort(y2)
+	idxs = np.argsort(probs)
  
 	# keep looping while some indexes still remain in the indexes
 	# list
@@ -131,13 +131,16 @@ for idx, f in enumerate(os.listdir(TEST_SET_PATH)):
 	X_test /= 255
 	y_pred = model.predict(X_test, batch_size=128, verbose=True)
 	accepted_bboxes = []
+	accepted_bboxes_probs = []
 	for i in xrange(y_pred.shape[0]):
 		if y_pred[i,1] > 0.5:
 			accepted_bboxes.append(candidates[i])
+			accepted_bboxes_probs.append(y_pred[i,1])
 
-	print len(accepted_bboxes)
 	accepted_bboxes = np.stack(accepted_bboxes, axis=0)
-	final_bboxes = non_max_suppression_fast(accepted_bboxes, 0.3)
+	accepted_bboxes_probs = np.array(accepted_bboxes_probs)
+	print accepted_bboxes.shape, accepted_bboxes_probs.shape
+	final_bboxes = non_max_suppression_fast(accepted_bboxes, accepted_bboxes_probs, 0.3)
 
 	print "Total candidates: ",y_pred.shape[0]
 	print "Positive candidates: ",accepted_bboxes.shape[0]
