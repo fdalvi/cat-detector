@@ -104,7 +104,7 @@ def IoU(bbox1, bbox2):
 		return 1
 	return interection_area / (bbox1_area + bbox2_area - interection_area)
 
-def process_voc_detection_data(save_file):
+def process_voc_detection_data(save_file, res=128):
 	image_sets = [get_class_image_names(c) for c in classes]
 	bounding_boxes = []
 	for c in classes:
@@ -119,7 +119,6 @@ def process_voc_detection_data(save_file):
 		class_idx = get_class_idx(c)
 		num_images = len(image_sets[class_idx])
 		num_samples = sum([len(bboxes) for bboxes in bounding_boxes[class_idx]])
-		samples = np.zeros((num_samples, 64, 64, 3), dtype=np.int8)
 		samples = []
 		bbox_deltas = []
 		ious = []
@@ -157,7 +156,7 @@ def process_voc_detection_data(save_file):
 
 				# Get ground_truth
 				cropped_im = im.crop(bbox)
-				cropped_im = cropped_im.resize((64,64), resample=Image.BILINEAR)
+				cropped_im = cropped_im.resize((res,res), resample=Image.BILINEAR)
 				samples.append(np.array(cropped_im))
 				bbox_deltas.append([0,0,0,0])
 				ious.append(IoU(bbox, bbox))
@@ -165,7 +164,7 @@ def process_voc_detection_data(save_file):
 				# Get positive samples
 				for p_bbox in positive_bounding_boxes:
 					cropped_im = im.crop(p_bbox[:4])
-					cropped_im = cropped_im.resize((64,64), resample=Image.BILINEAR)
+					cropped_im = cropped_im.resize((res,res), resample=Image.BILINEAR)
 					samples.append(np.array(cropped_im))
 					bbox_deltas.append([
 						bbox[0]-p_bbox[0],
@@ -178,7 +177,7 @@ def process_voc_detection_data(save_file):
 				# Get negative samples
 				for n_bbox in negative_bounding_boxes:
 					cropped_im = im.crop(n_bbox[:4])
-					cropped_im = cropped_im.resize((64,64), resample=Image.BILINEAR)
+					cropped_im = cropped_im.resize((res,res), resample=Image.BILINEAR)
 					background_samples.append(np.array(cropped_im))
 					background_bbox_deltas.append([0,0,0,0])
 		samples = np.stack(samples, axis=0)
@@ -236,7 +235,7 @@ def visualize_processed_files(save_file, num_samples=10):
 
 def load_voc_data():
 	NEGATIVE_SAMPLES = 1
-	processed_file = "processed_images_detection.npz"
+	processed_file = "processed_images_detection_128.npz"
 	if not os.path.isfile(processed_file):
 		process_voc_detection_data(processed_file)
 
@@ -248,14 +247,21 @@ def load_voc_data():
 
 	# Collect positive samples
 	x_positive = all_samples["samples_cat"]
+	y_bbox = all_samples["bboxdeltas_cat"]
 	num_positive = x_positive.shape[0]
 	idx = np.random.permutation(num_positive)
 	train_start, train_end = 0, int(0.7*num_positive)
 	val_start, val_end = train_end+1, int(0.9*num_positive)
 	test_start, test_end = val_end, num_positive
 	x_train_positive = x_positive[idx[train_start:train_end]]
+	x_train_bbox = x_train_positive
+	y_train_bbox = y_bbox[idx[train_start:train_end]]
 	x_val_positive = x_positive[idx[val_start:val_end]]
+	x_val_bbox = x_val_positive
+	y_val_bbox = y_bbox[idx[val_start:val_end]]
 	x_test_positive = x_positive[idx[test_start:test_end]]
+	x_test_bbox = x_test_positive
+	y_test_bbox = y_bbox[idx[test_start:test_end]]
 
 	# Collect negative samples
 	x_negatives = []
@@ -321,7 +327,9 @@ def load_voc_data():
 	print "Num Val:",x_val.shape[0]
 	print "Num Test:",x_test.shape[0]
 
-	return x_train, y_train, x_val, y_val, x_test, y_test
+	return x_train, y_train, x_val, y_val, x_test, y_test, \
+			x_train_bbox, y_train_bbox, x_val_bbox, y_val_bbox, \
+			x_test_bbox, y_test_bbox
 
 def load_voc_classification_data():
 	NEGATIVE_SAMPLES = 1
@@ -397,9 +405,9 @@ def load_voc_classification_data():
 def main():
 	# x_train, y_train, x_val, y_val, x_test, y_test = load_voc_data()
 	# print np.sum(y_test, axis=0)
-	# process_voc_detection_data('processed_images_detection')
+	process_voc_detection_data('processed_images_detection_128',res=128)
 	# visualize_processed_files('processed_images_detection.npz')
-	load_voc_data()
+	# load_voc_data()
 
 if __name__ == '__main__':
 	main()
