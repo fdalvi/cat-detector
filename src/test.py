@@ -14,6 +14,16 @@ import cPickle as cp
 import sys
 import h5py
 
+def rect2lines(bbox):
+	point_list = [
+		bbox[0], bbox[1],
+		bbox[2], bbox[1],
+		bbox[2], bbox[3],
+		bbox[0], bbox[3],
+		bbox[0], bbox[1]
+	]
+	return point_list
+
 # Malisiewicz et al.
 def non_max_suppression_fast(boxes, overlapThresh):
 	# if there are no boxes, return an empty list
@@ -86,7 +96,7 @@ if 'optimize_weights' in f:
 	del f['optimizer_weights']
 f.close()
 
-model = load_model('model_final.h5')
+model = load_model('models/model_128_1/model_final.h5')
 
 TEST_SET_PATH = "../../HiringExercise_MLCVEngineer/test_set/"
 # TEST_SET_PATH = "../data/voc2012/VOC2012/JPEGImages/"
@@ -134,8 +144,9 @@ for idx, f in enumerate(os.listdir(TEST_SET_PATH)):
 	print "Final candidates: ",final_bboxes.shape[0]
 
 	im = Image.open(TEST_SET_PATH + f)
+	line_width = int(max(im.size) * 0.005)
 	draw = ImageDraw.Draw(im)
 	for i in xrange(final_bboxes.shape[0]):
-		draw.rectangle(list(final_bboxes[i]), outline="green")
+		draw.line(rect2lines(final_bboxes[i]), fill="green", width=line_width)
 	del draw
-	im.save("test/results/" + f + ".png", "PNG")	
+	im.save("test/results/" + f + ".png", "PNG")
