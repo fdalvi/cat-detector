@@ -57,6 +57,8 @@ The number of epochs was chosen based on training loss, which stabilized by the 
 
 The actual samples chosen are described in the next question. We used negative to positive samples ratio of 2:1 in the second and third training periods to focus more on the negative examples. We still provide the positive examples inorder to avoid _catrastrophic forgetting_ in the network.
 
+The network also takes advantage of multi-task learning, since both the classification and regression are closely related. This idea was introduced in the FastRCNN paper, which was unlike the RCNN paper, where separate SVM's were trained.
+
 ###  Describe your pipeline and pre-processing steps?
 
 The dataset we use is the PASCAL VOC 2012 dataset, which has annotations for bounding boxes around various objects. As mentioned earlier, we consider both the exact bounding boxes as per the annotations, but also bounding boxes that are _close_ to the ground truth bounding boxes. The _closeness_ is measured using `Intersection Over Union`, with a value of 0.5 or higher signifying close bounding boxes. Bounding boxes that are _far away_ from all ground truth bounding boxes were chosen to belong to a **background** class. During our preprocessing, we extract all of the images given these bounding boxes and resize them to `128x128`, the size expected by our network.
@@ -83,7 +85,9 @@ The overall pipeline for testing is as follows:
 
 To obtain the best accuracy, we tried several architectures that were shallower/deeper - and chose the current architecture as the best balance between accuracy and processing time. We used a held out set of 100 images from the PASCAL VOC 2012 validation set to compute our overall mAP on the set, to get a quantitative measure of the overall system's performance.
 
-We also tried various ratios of positive to negative class samples for each period, as well as the ratio of `background` class to the rest of the negative classes. Using a ratio of 1:1 in the first period and 2:1 in the second and third period was crucial to obtaining good accuracy on both positive and negative samples. 
+We also tried various ratios of positive to negative class samples for each period, as well as the ratio of `background` class to the rest of the negative classes. Using a ratio of 1:1 in the first period and 2:1 in the second and third period was crucial to obtaining good accuracy on both positive and negative samples.
+
+The input image size was another dimension that affects the accuracy significantly. On one hand, smaller image sizes help us train deeper networks, but also provide the network fewer pixels to learn from. We tried several image dimensions like 32, 64, 128 - and finally settled on `128x128` as a good balance between processing time and accuracy.
 
 ### How long did your training and inference take, how could you make these faster?
 
@@ -92,6 +96,8 @@ All training and inference was performed on a _Quad Core 3.2 GHz Intel Core i5_ 
 Inference takes around 3s per image to extract regions of interest, and ~27s for classification and ~27 seconds for regression. Currently the classifier and regressor forward-passes are done separately, but since they share the lower layers, a lot of computation can be saved. This is left as future work.
 
 The computation can be made faster by using higher batch sizes (since we propose ~2000 regions per image, processing more of them in parallel will improve runtime). A higher batch size will require more memory. We can also perform the inference on a GPU, which empirically gives a 100x improvement on forward-pass computation. Finally, the computation for the lower layers is currently repeated, but can be avoided since the lower layers are shared.
+
+_On a side note, thanks to this exercise, a contribution was made to the https://github.com/yaroslavvb/tensorflow-community-wheels repository, which is a place for pre-built tensorflow binaries on various systems. The default tensorflow package provided with `pip` does not support advanced instruction sets which improves training time by about 3x. The contributed package is easy to install and provides users on macOS a faster way to train their networks on their CPU's!_
 
 ### If you had more time, how would you expand on this submission?
 
