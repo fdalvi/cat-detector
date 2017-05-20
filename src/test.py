@@ -79,7 +79,7 @@ def non_max_suppression_fast(boxes, probs, overlapThresh):
  
 	# return only the bounding boxes that were picked using the
 	# integer data type
-	return boxes[pick].astype("int")
+	return boxes[pick].astype("int"), probs[pick]
 
 def normalize_image(img):
 	if len(img.shape) == 2:
@@ -91,65 +91,121 @@ def normalize_image(img):
 		img = img[:,:,0:3]
 	return img
 
-f = h5py.File('model_final.h5', 'r+')
-if 'optimize_weights' in f:
-	del f['optimizer_weights']
-f.close()
+def test(model, test_set_images, output_path=None, annotations_path=None):
+	if (output_path is not None) and (not os.path.exists(output_path)):
+		os.makedirs(output_path)
 
-model = load_model('models/model_128_1/model_final.h5')
+	all_regions = dict()
+	mAP = 0
+	mAP_count = 0
+	for idx, f in enumerate(os.listdir(test_set_images)):
+		ext = f.split('.')[-1]
+		if ext not in ['jpg', 'jpeg', 'png']:
+			print "Not an Image: " + f
+			continue
+		print "Image: " + f
+		if output_path is not None:
+			img_out_path = os.path.join(output_path,f + ".png")
+			if os.path.exists(img_out_path):
+				print "Already processed."
+				continue
+		im = Image.open(os.path.join(test_set_images,f))
+		img = np.array(im)
+		img = normalize_image(img)
 
-TEST_SET_PATH = "../../HiringExercise_MLCVEngineer/test_set/"
-# TEST_SET_PATH = "../data/voc2012/VOC2012/JPEGImages/"
+		all_regions[f] = []
+		dlib.find_candidate_object_locations(img, all_regions[f], min_size=500)
+		print len(all_regions[f])
+		candidates = list()
+		for i, r in enumerate(all_regions[f]):
+			candidates.append([r.left(), r.top(), r.right(), r.bottom()])
+			if i > 2000:
+				# Hard limit number of proposals
+				break
 
-all_regions = dict()
+		candidates = list(candidates)
+		X_test = np.zeros((len(candidates), 128, 128, 3))
+		for idx, bbox in enumerate(candidates):
+			bounding_box = bbox
+			cropped_im = im.crop(bounding_box)
+			cropped_im = cropped_im.resize((128,128), resample=Image.BILINEAR)
+			X_test[idx,:,:,:] = normalize_image(np.array(cropped_im))
 
-for idx, f in enumerate(os.listdir(TEST_SET_PATH)):
-	print "Image: " + f
-	im = Image.open(TEST_SET_PATH + f)
-	img = np.array(im)
-	img = normalize_image(img)
+		X_test = X_test.astype('float32')
+		X_test /= 255
+		y_pred = model.predict(X_test, batch_size=128, verbose=True)
+		accepted_bboxes = []
+		accepted_bboxes_probs = []
+		for i in xrange(y_pred.shape[0]):
+			if y_pred[i,1] > 0.5:
+				accepted_bboxes.append(candidates[i])
+				accepted_bboxes_probs.append(y_pred[i,1])
 
-	all_regions[f] = []
-	dlib.find_candidate_object_locations(img, all_regions[f], min_size=500)
-	print len(all_regions[f])
-	candidates = list()
-	for i, r in enumerate(all_regions[f]):
-		candidates.append([r.left(), r.top(), r.right(), r.bottom()])
-		if i > 10000:
-			# Hard limit number of proposals
-			break
+		if len(accepted_bboxes) == 0:
+			final_bboxes = []
+			accepted_bboxes = np.array(accepted_bboxes)
+			final_bboxes = np.array(final_bboxes)
+		else:
+			accepted_bboxes = np.stack(accepted_bboxes, axis=0)
+			accepted_bboxes_probs = np.array(accepted_bboxes_probs)
+			print accepted_bboxes.shape, accepted_bboxes_probs.shape
+			final_bboxes, final_probs = non_max_suppression_fast(accepted_bboxes, accepted_bboxes_probs, 0.3)
 
-	candidates = list(candidates)
-	X_test = np.zeros((len(candidates), 128, 128, 3))
-	for idx, bbox in enumerate(candidates):
-		bounding_box = bbox
-		cropped_im = im.crop(bounding_box)
-		cropped_im = cropped_im.resize((128,128), resample=Image.BILINEAR)
-		X_test[idx,:,:,:] = normalize_image(np.array(cropped_im))
+			# filtered_idx = np.where(final_probs > 0.75)[0]
+			# final_bboxes = final_bboxes[filtered_idx]
+			# final_probs = final_probs[filtered_idx]
 
-	X_test = X_test.astype('float32')
-	X_test /= 255
-	y_pred = model.predict(X_test, batch_size=128, verbose=True)
-	accepted_bboxes = []
-	accepted_bboxes_probs = []
-	for i in xrange(y_pred.shape[0]):
-		if y_pred[i,1] > 0.5:
-			accepted_bboxes.append(candidates[i])
-			accepted_bboxes_probs.append(y_pred[i,1])
+		print "Total candidates: ",y_pred.shape[0]
+		print "Positive candidates: ",accepted_bboxes.shape[0]
+		print "Final candidates: ",final_bboxes.shape[0]
 
-	accepted_bboxes = np.stack(accepted_bboxes, axis=0)
-	accepted_bboxes_probs = np.array(accepted_bboxes_probs)
-	print accepted_bboxes.shape, accepted_bboxes_probs.shape
-	final_bboxes = non_max_suppression_fast(accepted_bboxes, accepted_bboxes_probs, 0.3)
+		if annotations_path is not None:
+			img_base = f.split('.')[0]
+			gt_bboxes = get_bounding_boxes(img_base, 'cat', data_path=annotations_path)
 
-	print "Total candidates: ",y_pred.shape[0]
-	print "Positive candidates: ",accepted_bboxes.shape[0]
-	print "Final candidates: ",final_bboxes.shape[0]
+			for gt_bbox in gt_bboxes:
+				tp = 0
+				fp = 0
+				ious = []
+				for pred_bbox_idx in xrange(final_bboxes.shape[0]):
+					ious.append(IoU(gt_bbox, final_bboxes[pred_bbox_idx]))
+				ious = sorted(ious)
+				if len(ious) > 0:
+					if ious[-1] > 0.5:
+						tp += 1
+						fp = len(ious)-1
+					else:
+						fp = len(ious)
 
-	im = Image.open(TEST_SET_PATH + f)
-	line_width = int(max(im.size) * 0.005)
-	draw = ImageDraw.Draw(im)
-	for i in xrange(final_bboxes.shape[0]):
-		draw.line(rect2lines(final_bboxes[i]), fill="green", width=line_width)
-	del draw
-	im.save("test/results/" + f + ".png", "PNG")
+				if (tp + fp) != 0:
+					mAP += float(tp)/float(tp+fp)
+					mAP_count += 1
+
+		if output_path is not None:
+			im = Image.open(os.path.join(test_set_images,f))
+			line_width = int(max(im.size) * 0.005)
+			draw = ImageDraw.Draw(im)
+			for i in xrange(final_bboxes.shape[0]):
+				draw.line(rect2lines(final_bboxes[i]), fill="green", width=line_width)
+				draw.text((final_bboxes[i][0],final_bboxes[i][1]), str(final_probs[i]))
+			del draw
+			im.save(img_out_path, "PNG")
+	print "mAP score: %0.2f"%(float(mAP)/mAP_count)
+
+def main():
+	TEST_SET_PATH = "../../HiringExercise_MLCVEngineer/test_set/"
+	MODEL_PATH = "models/model_128_7/model_final.h5"
+	OUT_PATH = MODEL_PATH.replace("models/","results/")
+
+	f = h5py.File(MODEL_PATH, 'a')
+	if 'optimizer_weights' in f:
+		del f['optimizer_weights']
+	f.close()
+
+	model = load_model(MODEL_PATH)
+
+	test(model, TEST_SET_PATH, output_path=OUT_PATH)
+	# test(model, "../data/voc2012/VOC2012/catOnly", output_path=OUT_PATH, annotations_path="../data/voc2012/VOC2012/")
+
+if __name__ == '__main__':
+	main()
