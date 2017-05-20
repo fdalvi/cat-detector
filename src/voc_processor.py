@@ -36,9 +36,9 @@ def get_class_image_names(class_name, include_difficult=False):
 				class_images.append(image_name)
 	return class_images
 
-def get_bounding_boxes(image_name, class_name):
+def get_bounding_boxes(image_name, class_name, data_path=DATA_PATH):
 	bounding_boxes = []
-	e = xml.etree.ElementTree.parse(DATA_PATH + 'Annotations/' + image_name + '.xml').getroot()
+	e = xml.etree.ElementTree.parse(data_path + 'Annotations/' + image_name + '.xml').getroot()
 	for obj in e.findall("object"):
 		current_obj = obj.find("name").text
 		if current_obj == class_name:
@@ -262,20 +262,26 @@ def load_voc_data():
 	x_test_positive = x_positive[idx[test_start:test_end]]
 	x_test_bbox = x_test_positive
 	y_test_bbox = y_bbox[idx[test_start:test_end]]
+	print("Collected positive samples.")
 
 	# Collect negative samples
 	x_negatives = []
+	x_extra_negatives = None
 	for c in negative_classes:
 		x_negatives.append(all_samples["samples_" + c])
 	x_negative = np.concatenate(tuple(x_negatives), 0)
 	idx = np.random.permutation(x_negative.shape[0])
 	num_negative_objs = int(NEGATIVE_SAMPLES*0.5*x_positive.shape[0])
+	x_extra_negatives = x_negative[idx[num_negative_objs:num_negative_objs*4]]
 	x_negative = x_negative[idx[:num_negative_objs]]
+	print("Collected negative samples.")
 
 	x_background = all_samples["samples_background"]
 	idx = np.random.permutation(x_background.shape[0])
 	num_negative_background = num_negative_objs
+	x_extra_negatives = np.concatenate((x_extra_negatives,x_background[idx[num_negative_background:num_negative_background*4]]), 0)
 	x_background = x_background[idx[:num_negative_background]]
+	print("Collected background samples.")
 
 	x_negative = np.concatenate(tuple([x_negative, x_background]), 0)
 	idx = np.random.permutation(x_negative.shape[0])
@@ -296,6 +302,7 @@ def load_voc_data():
 	print "Num cats:",num_positive
 	print "Num other objects:",num_negative_objs
 	print "Num random background:",num_negative_background
+	print "Num extra for hard mining:", x_extra_negatives.shape[0]
 
 	x_train = np.concatenate((x_train_positive, x_train_negative),0)
 	y_train = np.concatenate((np.ones(x_train_positive.shape[0], dtype=np.int), np.zeros(x_train_negative.shape[0], dtype=np.int)), 0)
@@ -323,13 +330,23 @@ def load_voc_data():
 	x_val /= 255
 	x_test /= 255
 
+	x_train_bbox = x_train_bbox.astype('float32')
+	x_val_bbox = x_val_bbox.astype('float32')
+	x_test_bbox = x_test_bbox.astype('float32')
+	x_train_bbox /= 255
+	x_val_bbox /= 255
+	x_test_bbox /= 255
+
+	x_extra_negatives = x_extra_negatives.astype('float32')
+	x_extra_negatives /= 255
+
 	print "Num Train:",x_train.shape[0]
 	print "Num Val:",x_val.shape[0]
 	print "Num Test:",x_test.shape[0]
 
 	return x_train, y_train, x_val, y_val, x_test, y_test, \
 			x_train_bbox, y_train_bbox, x_val_bbox, y_val_bbox, \
-			x_test_bbox, y_test_bbox
+			x_test_bbox, y_test_bbox, x_extra_negatives
 
 def load_voc_classification_data():
 	NEGATIVE_SAMPLES = 1
@@ -402,12 +419,52 @@ def load_voc_classification_data():
 
 	return x_train, y_train, x_val, y_val, x_test, y_test
 
+def load_voc_data_cached():
+	cached_file = "sets_cached.npz"
+	if not os.path.isfile(cached_file):
+		print "Cache not found, computing sets..."
+		x_train, y_train, x_val, y_val, x_test, y_test, \
+			x_train_bbox, y_train_bbox, x_val_bbox, y_val_bbox, \
+			x_test_bbox, y_test_bbox, x_extra_negatives = load_voc_data()
+		sets = {
+			'x_train': x_train,
+			'y_train': y_train,
+			'x_val': x_val,
+			'y_val': y_val,
+			'x_test': x_test,
+			'y_test': y_test,
+			'x_train_bbox': x_train_bbox,
+			'y_train_bbox': y_train_bbox,
+			'x_val_bbox': x_val_bbox,
+			'y_val_bbox': y_val_bbox,
+			'x_test_bbox': x_test_bbox,
+			'y_test_bbox': y_test_bbox,
+			'x_extra_negatives': x_extra_negatives
+		}
+
+		np.savez_compressed("sets_cached", **sets)
+	else:
+		print "Loading cached sets"
+		sets = np.load(cached_file)
+
+	return sets['x_train'], sets['y_train'], sets['x_val'], sets['y_val'], \
+		sets['x_test'], sets['y_test'], sets['x_train_bbox'], \
+		sets['y_train_bbox'], sets['x_val_bbox'], sets['y_val_bbox'], \
+		sets['x_test_bbox'], sets['y_test_bbox'], sets['x_extra_negatives']
+
+
 def main():
 	# x_train, y_train, x_val, y_val, x_test, y_test = load_voc_data()
 	# print np.sum(y_test, axis=0)
-	process_voc_detection_data('processed_images_detection_128',res=128)
+	# process_voc_detection_data('processed_images_detection_128',res=128)
 	# visualize_processed_files('processed_images_detection.npz')
-	# load_voc_data()
+	x_train, y_train, x_val, y_val, x_test, y_test, \
+			x_train_bbox, y_train_bbox, x_val_bbox, y_val_bbox, \
+			x_test_bbox, y_test_bbox, x_extra_negatives = load_voc_data_cached()
+
+	print x_train[0]
+	print x_train_bbox[0]
+	print x_extra_negatives[0]
 
 if __name__ == '__main__':
 	main()
