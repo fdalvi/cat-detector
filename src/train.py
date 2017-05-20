@@ -62,9 +62,9 @@ def main():
 
 	# Network parameters
 	batch_size = 128
-	epochs = 1
-	total_mining_iterations = 0
-	bbox_reg_epochs = 1
+	epochs = 15
+	total_mining_iterations = 3
+	bbox_reg_epochs = 60
 	num_classes = 2
 
 	# Load dataset (from cache if possible, or else process it first)

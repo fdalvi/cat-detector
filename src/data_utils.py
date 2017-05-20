@@ -12,8 +12,7 @@ import os
 import random
 import xml.etree.ElementTree
 
-from PIL import Image
-
+from PIL import Image, ImageDraw
 DATA_PATH = '../data/voc2012/VOC2012/'
 classes = ['aeroplane','bicycle','bird','boat','bottle','bus','car','cat','chair','cow','diningtable','dog','horse','motorbike','person','pottedplant','sheep','sofa','tvmonitor']
 
@@ -314,7 +313,8 @@ def visualize_processed_files(save_file, num_samples=10):
 	samples = np.load(save_file)
 	print("Loaded data.")
 	num_classes = 20
-	full_image = np.zeros((64*num_classes, 64*num_samples, 3), dtype=np.int8)
+	text_offset = 100
+	full_image = np.zeros((64*num_classes, text_offset+64*num_samples, 3), dtype=np.int8)
 	print len(classes + ["background"])
 	for c_idx, c in enumerate(classes + ["background"]):
 		idx = np.random.permutation(samples["samples_" + c].shape[0])
@@ -324,8 +324,13 @@ def visualize_processed_files(save_file, num_samples=10):
 
 		for s_idx in xrange(num_samples):
 			tmp = random_samples[s_idx,:,:,:]
-			full_image[c_idx*64:(c_idx+1)*64,s_idx*64:(s_idx+1)*64,:] = tmp
+			full_image[c_idx*64:(c_idx+1)*64,text_offset+(s_idx*64):text_offset+((s_idx+1)*64),:] = tmp
+	full_image[:,0:text_offset,:] = 255
 	img = Image.fromarray(full_image , mode="RGB")
+	draw = ImageDraw.Draw(img)
+	for c_idx, c in enumerate(classes + ["background"]):
+		draw.text((10, 25+c_idx*64), c, fill='black')
+	del draw
 	img.save("full_samples.png")
 
 def load_voc_data(processed_file="processed_images_detection_128.npz", negative_ratio = 1):
@@ -554,10 +559,10 @@ def load_voc_data_cached(cached_file = "sets_cached.npz"):
 
 def main():
 	# process_voc_detection_data('processed_images_detection_128',res=128)
-	# visualize_processed_files('processed_images_detection.npz')
-	x_train, y_train, x_val, y_val, x_test, y_test, \
-			x_train_bbox, y_train_bbox, x_val_bbox, y_val_bbox, \
-			x_test_bbox, y_test_bbox, x_extra_negatives = load_voc_data_cached()
+	visualize_processed_files('processed_images_detection.npz')
+	# x_train, y_train, x_val, y_val, x_test, y_test, \
+	# 		x_train_bbox, y_train_bbox, x_val_bbox, y_val_bbox, \
+	# 		x_test_bbox, y_test_bbox, x_extra_negatives = load_voc_data_cached()
 
 if __name__ == '__main__':
 	main()
