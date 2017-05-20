@@ -102,3 +102,49 @@ Several potential expansions are possible with more time and/or resources:
 4. Train a multi-class network: Currently we have only used two classes - cats and non-cats. Including more classes can help the network perform better, especially with false-negatives. Since we are currently bundling dogs, people, furniture and random backgrounds all into one `non-cat` class, we are potentially making it harder for the network to keep track of all of these separately.
 
 ## Instructions to run
+There are two main scripts to this project, both in the `src/` folder. The following pre-requisites need to be satisified for the project to run:
+* Python 2.7
+* `virtualenv`
+* Python build with boost bindings (and subsequently `boost` as well)
+* `tar` and `unzip` utilities
+
+On MacOS, you can use the following to install boost and boost-bindings for python:
+```
+brew install boost --with-python
+brew install boost-python
+```
+
+On Linux, you can use the following:
+```
+sudo apt-get install libboost-all-dev
+```
+
+Once you have these pre-requisites loaded, use the following to download the datasets (VOC and testdata):
+```
+cd data/voc2012
+curl -o vocdata.tar https://pjreddie.com/media/files/VOCtrainval_11-May-2012.tar
+tar -xvf vocdata.tar
+cd ../..
+
+cd data/test
+curl -o test_set.zip https://raw.githubusercontent.com/CMIST/HiringExercise_MLCVEngineer/master/test_set.zip
+unzip test_set.zip
+cd ../..
+```
+
+Now, create a virtual environment for the python requirements:
+```
+virtualenv .env
+. .env/bin/activate
+pip install -r requirements.txt
+```
+
+The environment should be all setup now! Its time to train the network:
+```
+cd src
+python train.py models/
+python test.py models/
+```
+
+The models will be saved in the `models/` directory, while the results in `results/model_final.h5/` directory.
+
