@@ -326,7 +326,7 @@ def main():
 	if len(sys.argv) > 1:
 		model_load_path = sys.argv[1]
 
-	TEST_SET_PATH = "../../HiringExercise_MLCVEngineer/test_set/"
+	TEST_SET_PATH = "../data/test/test_set/"
 	MODEL_PATH = os.path.join(model_load_path,"model_final.h5")
 	BBOX_MODEL_PATH = os.path.join(model_load_path,"bbox_model_final.h5")
 	OUT_PATH = MODEL_PATH.replace("models/","results/")
