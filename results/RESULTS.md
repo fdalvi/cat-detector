@@ -1,4 +1,4 @@
-# All results - Full resolution
+# All results - Normalized resolution
 
 ![test (1).jpeg.png](test%20(1).jpeg.png)
 
