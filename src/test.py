@@ -25,10 +25,10 @@ def rect2lines(bbox):
 	return point_list
 
 # Malisiewicz et al.
-def non_max_suppression_fast(boxes, probs, overlapThresh):
+def non_max_suppression_fast(boxes, probs, overlapThresh, areas=None):
 	# if there are no boxes, return an empty list
 	if len(boxes) == 0:
-		return []
+		return np.array([]), np.array([]), np.array([])
  
 	# if the bounding boxes integers, convert them to floats --
 	# this is important since we'll be doing a bunch of divisions
@@ -47,7 +47,10 @@ def non_max_suppression_fast(boxes, probs, overlapThresh):
 	# compute the area of the bounding boxes and sort the bounding
 	# boxes by the bottom-right y-coordinate of the bounding box
 	area = (x2 - x1 + 1) * (y2 - y1 + 1)
-	idxs = np.argsort(probs)
+	if areas is None:
+		idxs = np.argsort(probs)
+	else:
+		idxs = np.argsort(areas)
  
 	# keep looping while some indexes still remain in the indexes
 	# list
@@ -79,7 +82,7 @@ def non_max_suppression_fast(boxes, probs, overlapThresh):
  
 	# return only the bounding boxes that were picked using the
 	# integer data type
-	return boxes[pick].astype("int"), probs[pick]
+	return boxes[pick].astype("int"), probs[pick], pick
 
 def normalize_image(img):
 	if len(img.shape) == 2:
@@ -91,7 +94,7 @@ def normalize_image(img):
 		img = img[:,:,0:3]
 	return img
 
-def test(model, test_set_images, output_path=None, annotations_path=None):
+def test(model, test_set_images, output_path=None, annotations_path=None, print_probs=False, bbox_model=None):
 	if (output_path is not None) and (not os.path.exists(output_path)):
 		os.makedirs(output_path)
 
@@ -134,26 +137,43 @@ def test(model, test_set_images, output_path=None, annotations_path=None):
 		X_test = X_test.astype('float32')
 		X_test /= 255
 		y_pred = model.predict(X_test, batch_size=128, verbose=True)
+		if bbox_model is not None:
+			y_bbox_pred = bbox_model.predict(X_test, batch_size=128, verbose=True)
+		
 		accepted_bboxes = []
 		accepted_bboxes_probs = []
+		if bbox_model is not None:
+			accepted_bboxes_reg = []
 		for i in xrange(y_pred.shape[0]):
 			if y_pred[i,1] > 0.5:
 				accepted_bboxes.append(candidates[i])
 				accepted_bboxes_probs.append(y_pred[i,1])
+				if bbox_model is not None:
+					accepted_bboxes_reg.append(y_bbox_pred[i])
 
 		if len(accepted_bboxes) == 0:
 			final_bboxes = []
 			accepted_bboxes = np.array(accepted_bboxes)
 			final_bboxes = np.array(final_bboxes)
+			if bbox_model is not None:
+				final_bboxes_reg = np.array(accepted_bboxes_reg)
 		else:
 			accepted_bboxes = np.stack(accepted_bboxes, axis=0)
 			accepted_bboxes_probs = np.array(accepted_bboxes_probs)
+			if bbox_model is not None:
+				accepted_bboxes_reg = np.stack(accepted_bboxes_reg, axis=0)
+				accepted_bboxes += accepted_bboxes_reg.astype(np.int)
 			print accepted_bboxes.shape, accepted_bboxes_probs.shape
-			final_bboxes, final_probs = non_max_suppression_fast(accepted_bboxes, accepted_bboxes_probs, 0.3)
+			final_bboxes, final_probs, idx = non_max_suppression_fast(accepted_bboxes, accepted_bboxes_probs, 0.3)
 
-			# filtered_idx = np.where(final_probs > 0.75)[0]
-			# final_bboxes = final_bboxes[filtered_idx]
-			# final_probs = final_probs[filtered_idx]
+			filtered_idx = np.where(final_probs > 0.75)[0]
+			final_bboxes = final_bboxes[filtered_idx]
+			final_probs = final_probs[filtered_idx]
+			
+			areas = (final_bboxes[:,2] - final_bboxes[:,0]) * (final_bboxes[:,3] - final_bboxes[:,1])
+			final_bboxes, final_probs, idx = non_max_suppression_fast(final_bboxes, final_probs, 0.5, areas=areas)
+			# print final_bboxes.shape
+			# print final_bboxes_reg.shape
 
 		print "Total candidates: ",y_pred.shape[0]
 		print "Positive candidates: ",accepted_bboxes.shape[0]
@@ -183,18 +203,29 @@ def test(model, test_set_images, output_path=None, annotations_path=None):
 
 		if output_path is not None:
 			im = Image.open(os.path.join(test_set_images,f))
+			width, height = im.size
 			line_width = int(max(im.size) * 0.005)
 			draw = ImageDraw.Draw(im)
 			for i in xrange(final_bboxes.shape[0]):
-				draw.line(rect2lines(final_bboxes[i]), fill="green", width=line_width)
-				draw.text((final_bboxes[i][0],final_bboxes[i][1]), str(final_probs[i]))
+				# Handle potential out of bounds because of regression
+				curr_bbox = final_bboxes[i]
+				curr_bbox[0] = max(min(curr_bbox[0], width), 0)
+				curr_bbox[1] = max(min(curr_bbox[1], height), 0)
+				curr_bbox[2] = max(min(curr_bbox[2], width), 0)
+				curr_bbox[3] = max(min(curr_bbox[3], height), 0)
+
+				draw.line(rect2lines(curr_bbox), fill="green", width=line_width)
+				if print_probs:
+					draw.text((curr_bbox[0],curr_bbox[1]), str(final_probs[i]))
 			del draw
 			im.save(img_out_path, "PNG")
-	print "mAP score: %0.2f"%(float(mAP)/mAP_count)
+	if (annotations_path is not None) and (mAP_count > 0):
+		print "mAP score: %0.2f"%(float(mAP)/mAP_count)
 
 def main():
 	TEST_SET_PATH = "../../HiringExercise_MLCVEngineer/test_set/"
 	MODEL_PATH = "models/model_128_7/model_final.h5"
+	BBOX_MODEL_PATH = "models/model_128_7/bbox_model_final.h5"
 	OUT_PATH = MODEL_PATH.replace("models/","results/")
 
 	f = h5py.File(MODEL_PATH, 'a')
@@ -202,9 +233,15 @@ def main():
 		del f['optimizer_weights']
 	f.close()
 
-	model = load_model(MODEL_PATH)
+	f = h5py.File(BBOX_MODEL_PATH, 'a')
+	if 'optimizer_weights' in f:
+		del f['optimizer_weights']
+	f.close()
 
-	test(model, TEST_SET_PATH, output_path=OUT_PATH)
+	model = load_model(MODEL_PATH)
+	bbox_model = load_model(BBOX_MODEL_PATH)
+
+	test(model, TEST_SET_PATH, output_path=OUT_PATH, bbox_model=bbox_model)
 	# test(model, "../data/voc2012/VOC2012/catOnly", output_path=OUT_PATH, annotations_path="../data/voc2012/VOC2012/")
 
 if __name__ == '__main__':
