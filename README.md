@@ -29,8 +29,13 @@ Samples from the dataset:
 ![VOC2012](/report/voc_2012_samples.png)
 ## Results
 ### The good
+![Good Results](/report/good-lowres.png)
+Characteristics of good results were images with unocluded cats, especially faces. The network learned well to recognize cat eyes as well, and possibly used that to make several classifications.
 ### The not-so-good
+![Not so Good Results](/report/not-so-good-lowres.png)
+In the images that are mis-classified, the majority contain objects with features similar to cats, like dogs or people. Distinct dogs or people with no occlusion are generally classified correctly, but there are times when the network makes a mistake on these. Random backgrounds are correctly classified most of the times. Some cats that have occluded faces are also misclassified by the network. _Further details in the [Discussion](#discussion) section._
 ### Full Results
+Full results are available in the `results/` folder. 
 
 ## Discussion
 * What network/model did you select, and why?
